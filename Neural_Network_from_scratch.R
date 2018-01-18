@@ -2,7 +2,7 @@
 setwd("C:/Users/DELL/Desktop/Self Learning/R")
 df <- read.csv("cancer.csv", header = TRUE)
 
-#setup
+#features and label
 X <- cbind(df$studytime, df$drug, df$age)
 y <- df$died
 
@@ -20,68 +20,84 @@ ann <- function(X, Y, n_lay1=3, n_lay2=3, alpha=0.001, iter=10000){
   b2 <- matrix(0, ncol=n_lay1)
   b3 <- matrix(0, ncol=n_lay2)
   b4 <- matrix(0, ncol=1)
-
-  for(i in 1:iter){
-    #Feed Forward
-    z2 <- sweep(X %*% w1,2,b2,"+")
-    a2 <- 1/(1+exp(-z2))
-    z3 <- sweep(a2 %*% w2,2,b3,"+")
-    a3 <- 1/(1+exp(-z3))
-    z4 <- sweep(a3 %*% w3,2,b4,"+")
-    yhat <- 1/(1+exp(-z4))
+  
+  
+  train <- function(){
+    for(i in 1:iter){
+      #Feed Forward
+      z2 <- sweep(X %*% w1,2,b2,"+")
+      a2 <- 1/(1+exp(-z2))
+      z3 <- sweep(a2 %*% w2,2,b3,"+")
+      a3 <- 1/(1+exp(-z3))
+      z4 <- sweep(a3 %*% w3,2,b4,"+")
+      yhat <- 1/(1+exp(-z4))
+      
+      #Cost fuction
+      J <- sum((yhat-y)^2)/(2)
+      err[i] <- J #save for plot
+      if (i %% 20 == 0){cat("iteration",i,"error =",J,"\n")}
+      
+      #Back Propogation
+      fpz4 <- (yhat*(1-yhat))
+      del4 <- -(y-yhat)*fpz4
+      dJdW3 <- t(a3) %*% del4
+      db4 <- sum(del4)
+      
+      fpz3 <- (a3*(1-a3))
+      del3 <- (del4 %*% t(w3))*fpz3
+      dJdW2 <- t(a2) %*% del3
+      db3 <- t(matrix(1, nrow=nrow(X))) %*% del3
+      
+      fpz2 <- (a2*(1-a2))
+      del2 <- (del3 %*% t(w2)) *fpz2
+      dJdW1 <- t(X) %*% del2
+      db2 <- t(matrix(1, nrow=nrow(X))) %*% del2
+      
+      #Gradient descent Update
+      w1 <- w1-alpha*dJdW1
+      w2 <- w2-alpha*dJdW2
+      w3 <- w3-alpha*dJdW3
+      b2 <- b2-alpha*db2
+      b3 <- b3-alpha*db3
+      b4 <- b4-alpha*db4
+    }
     
-    #Cost fuction
-    J <- sum((yhat-y)^2)/(2)
-    err[i] <- J #save for plot
-    if (i %% 20 == 0){cat("iteration",i,"error =",J,"\n")}
+    ann_predict <- ifelse(yhat>0.5,1,0)
+    misclass1 <- mean(y != ann_predict)
+    acc <- 100-misclass1*100
     
-    #Back Propogation
-    fpz4 <- (yhat*(1-yhat))
-    del4 <- -(y-yhat)*fpz4
-    dJdW3 <- t(a3) %*% del4
-    db4 <- sum(del4)
+    plot(err, type="l", main=paste("ANN",n_lay1,"-",n_lay2), ylab="error", xlab="iteration")
+    text(0.8*iter,(max(err)+min(err)+mean(err))/3, 
+         paste("Accuracy =", round(acc, 2)))
+    text(0.8*iter,(max(err)+min(err))/2, 
+         paste("Learning rate =", alpha))
     
-    fpz3 <- (a3*(1-a3))
-    del3 <- (del4 %*% t(w3))*fpz3
-    dJdW2 <- t(a2) %*% del3
-    db3 <- t(matrix(1, nrow=nrow(X))) %*% del3
-    
-    fpz2 <- (a2*(1-a2))
-    del2 <- (del3 %*% t(w2)) *fpz2
-    dJdW1 <- t(X) %*% del2
-    db2 <- t(matrix(1, nrow=nrow(X))) %*% del2
-    
-    #Gradient descent Update
-    w1 <- w1-alpha*dJdW1
-    w2 <- w2-alpha*dJdW2
-    w3 <- w3-alpha*dJdW3
-    b2 <- b2-alpha*db2
-    b3 <- b3-alpha*db3
-    b4 <- b4-alpha*db4
+    result <- list(wieght = list(w1=w1,w2=w2,w3=w3,b1=b2,b2=b3,b3=b4),
+                   accuracy = list(accuracy=acc,missclass=misclass1*100),
+                   prop_predict = yhat,
+                   prediction = ann_predict,
+                   confusion_matrix=table(y, ann_predict))
   }
   
-  ann_predict <- ifelse(yhat>0.5,1,0)
-  misclass1 <- mean(y != ann_predict)
-  acc <- 100-misclass1*100
+  #check X-Y size
+  if(nrow(X)!=length(Y)){
+    stop("X and Y has different size", call. = FALSE)
+    result <- NULL
+  } else {
+    result <- train()
+  }
   
-  plot(err, type="l", main=paste("ANN",n_lay1,"-",n_lay2), ylab="error", xlab="iteration")
-  text(0.8*iter,(max(err)+min(err)+mean(err))/3, 
-       paste("Accuracy =", round(acc, 2)))
-  text(0.8*iter,(max(err)+min(err))/2, 
-       paste("Learning rate =", round(alpha, 4)))
-  
-  result <- list(wieght = list(w1=w1,w2=w2,w3=w3,b1=b2,b2=b3,b3=b4),
-                 accuracy = list(accuracy=acc,missclass=misclass1*100),
-                 prop_predict = yhat,
-                 prediction = ann_predict,
-                 confusion_matrix=table(y, ann_predict))
   return(invisible(result))
 }
 
-model1 <- ann(X,Y, 10, 10, 1e5, iter=2000)
+model1 <- ann(X,y)
 str(model1)
 
+model2 <- ann(X,y, 10, 10, alpha=1e-5, iter=20000)
+str(model2)
 
+#differenct size test
+ann(X,Y=c(1:10))
 
 
 
